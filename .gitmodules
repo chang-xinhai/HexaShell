@@ -6,3 +6,12 @@
 	path = third_party/robosuite
 	url = https://github.com/ARISE-Initiative/robosuite.git
 	ignore = dirty
+[submodule "third_party/Depth-Anything-V2"]
+	path = third_party/Depth-Anything-V2
+	url = https://github.com/DepthAnything/Depth-Anything-V2.git
+[submodule "third_party/TradSL"]
+	path = third_party/TradSL
+	url = https://github.com/Namisntimpot/TradSL.git
+[submodule "third_party/nsl_infer_server"]
+	path = third_party/nsl_infer_server
+	url = https://github.com/Namisntimpot/nsl_infer_server.git

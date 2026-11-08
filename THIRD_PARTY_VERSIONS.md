@@ -75,3 +75,19 @@ RoboTwin 2.0 itself: [RoboTwin-Platform/RoboTwin](https://github.com/RoboTwin-Pl
 | sam3 | [facebookresearch/sam3](https://github.com/facebookresearch/sam3), package version 0.1.0 |
 | Checkpoint | `sam3.pt` from [facebook/sam3](https://huggingface.co/facebook/sam3) |
 | Environment | torch 2.7.0, torchvision 0.22.0 (CUDA), timm |
+
+
+## Depth backends (pinned independent Git submodules)
+
+Initialize with `git submodule update --init --recursive`. No model weights or environments
+are added by these submodule references. Original sibling Depth checkouts are untouched.
+
+| Component | Path | Revision | License status |
+|---|---|---|---|
+| Depth Anything V2 | third_party/Depth-Anything-V2 | a561b849ebae10a6f5ef49e26c83cbbcd36c71bf | Source includes Apache-2.0 LICENSE; inspect upstream model-specific checkpoint terms separately |
+| TradSL | third_party/TradSL | be4b4d1640458096318d7890a0e434876ebeeae4 | No top-level license found; permission/redistribution scope must be confirmed with owner |
+| NSL inference server | third_party/nsl_infer_server | 5ed56924ca52122d0b13e9cfbe346531b8c61add | No top-level license found; bundled DeepSL dependencies carry separate licenses; confirm owner authorization |
+
+These remain independent repositories; HexaShell does not relicense their contents.
+NSL and TradSL experiments currently receive passive rendered RGB stereo (5cm baseline),
+not projected active-IR input. Code execution checks do not prove metric accuracy.

@@ -6,6 +6,7 @@ The robot calls are answered by :class:`hexashell.robot.host.RobotHost`; the tas
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,10 @@ class RoboDojoSession(Session):
 
     # -- lifetime ------------------------------------------------------------------------------
     def open(self, settings, rec, attach: Attach) -> None:
+        self.depth = bool(settings.depth)
+        if self.depth:
+            self._open_depth(settings, rec, attach)
+            return
         self.rec = rec
         seq, obs = self.bridge.latest()
         if obs is None:
@@ -42,6 +47,41 @@ class RoboDojoSession(Session):
                               on_step=self._log_state, speed=speed_named(settings.motion))
         self.first = first
         self.perception = scene is not None
+
+    def prompt_variant(self):
+        return "rgbd" if getattr(self, "depth", False) else None
+
+    def _open_depth(self, settings, rec, attach):
+        from .depth import DepthProvider, RGBDHost, DepthScene, closing_yaw, check_cam
+        if not settings.sam3_url:
+            raise RuntimeError("RoboDojo RGBD requires SAM3; no RGB fallback")
+        self.rec = rec
+        seq, obs = self.bridge.latest()
+        if obs is None:
+            raise RuntimeError("no observation to start from")
+        self.depth_provider = DepthProvider(os.environ.get("HEXASHELL_DEPTH_BACKEND", "gt"),
+                                            os.environ.get("HEXASHELL_DEPTH_URL"), log=rec.event)
+        parse_depth = self.depth_provider.parse
+        first = parse_depth(obs, seq)
+        self._log_state(seq, obs, None)
+        scene = DepthScene(settings.sam3_url, cams=list(CAMERAS), check_cam=check_cam,
+                           closing_yaw=closing_yaw, log=rec.event)
+        try:
+            self.host = RGBDHost(self.bridge, first, scene=scene, log=rec.event, attach=attach,
+                                on_step=self._log_state, speed=speed_named(settings.motion), parser=parse_depth)
+            self.host.views()
+            self.first = first
+            self.perception = True
+            rec.event({"kind": "rgbd_active", "source": "vision.depth", "camera_convention": "opengl_to_world"})
+        except BaseException:
+            scene.close()
+            raise
+
+    def close(self):
+        if getattr(self, "depth", False) and self.host is not None:
+            scene, self.host.scene = self.host.scene, None
+            if scene is not None:
+                scene.close()
 
     def _scene(self, settings):
         if not settings.sam3_url:

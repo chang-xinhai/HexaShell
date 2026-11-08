@@ -45,7 +45,9 @@ class RobotHost:
     def __init__(self, bridge: Bridge | None, first: Snapshot, *, scene=None,
                  log: Callable[[dict], None] | None = None,
                  attach: Callable[[str, np.ndarray, str], None] | None = None,
-                 on_step: Callable[[int, dict, dict], None] | None = None, speed=None, rig: Rig = ROBODOJO):
+                 on_step: Callable[[int, dict, dict], None] | None = None, speed=None, rig: Rig = ROBODOJO,
+                 parser=parse_obs):
+        self.parse_observation = parser
         self.bridge = bridge
         self.snap = first
         #: per camera, the snapshot of the latest picture the model has seen (the start pictures, then
@@ -91,7 +93,7 @@ class RobotHost:
     # -- the driver's link to the simulator ------------------------------------------------------
     def act(self, action: dict) -> Snapshot:
         seq, obs = self.bridge.act(action)
-        self.snap = parse_obs(obs, seq, previous=self.snap)
+        self.snap = self.parse_observation(obs, seq, previous=self.snap)
         self.on_step(seq, obs, action)
         return self.snap
 
