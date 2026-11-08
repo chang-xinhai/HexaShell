@@ -242,8 +242,8 @@ class View:
         return fingers_mask(self.camera, self.arms, self.openings, arm=arm)
 
 
-def views_of(snap: Snapshot, openings: dict[str, float] | None = None) -> dict[str, View]:
-    cams = cameras_for(snap)
+def views_of(snap: Snapshot, openings: dict[str, float] | None = None, *, cameras=None) -> dict[str, View]:
+    cams = cameras_for(snap) if cameras is None else cameras
     return {name: View(name, snap.seq, cams[name], snap.images[name], snap.arms_in_pictures, openings)
             for name in cams if snap.images.get(name) is not None}
 

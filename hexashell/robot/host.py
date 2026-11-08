@@ -45,9 +45,8 @@ class RobotHost:
     def __init__(self, bridge: Bridge | None, first: Snapshot, *, scene=None,
                  log: Callable[[dict], None] | None = None,
                  attach: Callable[[str, np.ndarray, str], None] | None = None,
-                 on_step: Callable[[int, dict, dict], None] | None = None, speed=None, rig: Rig = ROBODOJO,
-                 parser=parse_obs):
-        self.parse_observation = parser
+                 on_step: Callable[[int, dict, dict], None] | None = None, speed=None, rig: Rig = ROBODOJO, depth: bool = False):
+        self.robodojo_depth = depth
         self.bridge = bridge
         self.snap = first
         #: per camera, the snapshot of the latest picture the model has seen (the start pictures, then
@@ -69,7 +68,10 @@ class RobotHost:
     def bind_scene(self, scene) -> None:
         """Give the perception its pictures (RoboDojo's Scene reads them from this host), and tell it what
         the hands carry."""
-        scene.bind(self)
+        if self.robodojo_depth:
+            scene.bind(self.views, hands={a: (lambda a=a: self.driver.grasp_pose(a)) for a in self.rig.arms})
+        else:
+            scene.bind(self)
         self.carry = scene
 
     # -- what a benchmark other than RoboDojo answers differently --------------------------------
@@ -88,12 +90,39 @@ class RobotHost:
 
     def cameras_now(self, cams=None) -> dict:
         """The camera models of those pictures."""
-        return cameras_for(self.snap)
+        return cameras_for(self.snap, observed=self.robodojo_depth)
+
+    def views(self, cams=None, *, snapshot=None):
+        """Adapt RGB picture context to the existing depth tools; no separate frame cache."""
+        from ..state import CAMERA_KEYS
+        from ..vision.scene import views_of
+        from ..vision.rgbd import DepthView
+
+        snap = self.snap if snapshot is None else snapshot
+        names = list(CAMERAS) if cams is None else [check_cam(c) for c in cams]
+        models = cameras_for(snap, observed=True)
+        arms = snap.arms_in_pictures
+        openings = {a: min(1., float(arms[a].gripper) + .2) for a in self.rig.arms if self.driver.squeezing(a)}
+        pictures = views_of(snap, openings or None, cameras={c: models[c] for c in names})
+        keys = {name: key for key, name in CAMERA_KEYS.items()}
+        out = {}
+        for name, picture in pictures.items():
+            d = np.asarray(snap.vision[keys[name]]["depth"])
+            if d.ndim == 3 and d.shape[-1] == 1:
+                d = d[..., 0]
+            if d.dtype.kind != "f" or d.shape != picture.image.shape[:2]:
+                raise ValueError(f"depth must be aligned float optical-axis metres: {name}")
+            view = DepthView(name, picture.image, d, picture.camera, picture.robot,
+                             step=snap.step or 0, frame_id=f"robodojo:{snap.seq}:{name}")
+            if not view.valid().any():
+                raise ValueError(f"no valid depth: {name}")
+            out[name] = view
+        return out
 
     # -- the driver's link to the simulator ------------------------------------------------------
     def act(self, action: dict) -> Snapshot:
         seq, obs = self.bridge.act(action)
-        self.snap = self.parse_observation(obs, seq, previous=self.snap)
+        self.snap = parse_obs(obs, seq, previous=self.snap, depth=self.robodojo_depth)
         self.on_step(seq, obs, action)
         return self.snap
 
@@ -199,11 +228,27 @@ class RobotHost:
         return self._need_scene().find(check_cam(cam), text, at=at, points=points, labels=labels, box=box)
 
     def _measure(self, target, *, cams="auto"):
+        if self.robodojo_depth:
+            from ..vision.rgbd import Mask
+            for mask in target if isinstance(target, (list, tuple)) else [target]:
+                if isinstance(mask, Mask) and self._need_scene().known(mask)[1].frame_id != f"robodojo:{self.snap.seq}:{mask.cam}":
+                    raise Refused("mask is from an older picture; find again before measuring")
         return self._need_scene().measure(target, cams=cams)
 
     def _to_world(self, cam, xy, *, z=None, pair=None):
-        from ..vision.spots import to_world
-
+        from ..vision.spots import to_world, picked_from
+        if self.robodojo_depth:
+            from ..vision.rgbd import spot
+            if z is not None and pair is not None:
+                raise Refused("to_world: give z= or pair=, not both")
+            if pair is not None and (not isinstance(pair, (tuple, list)) or len(pair) != 2):
+                raise Refused("pair must be (camera, pixel)")
+            cam = check_cam(cam)
+            views = self.views([cam], snapshot=picked_from(self, cam))
+            if pair is not None:
+                other = check_cam(pair[0])
+                views.update(self.views([other], snapshot=picked_from(self, other)))
+            return spot(views, cam, xy, z=z, pair=pair, check_cam=check_cam)
         return to_world(self, check_cam(cam), xy, z=z, pair=pair)
 
     def _to_pixel(self, xyz, cam="head"):

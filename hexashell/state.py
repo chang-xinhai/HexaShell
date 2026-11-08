@@ -38,6 +38,8 @@ class Snapshot:
     info: dict[str, Any] = field(default_factory=dict)
     #: arm readings the pictures show (the previous observation's when pictures run behind)
     pictured_arms: dict[str, ArmReading] | None = None
+    vision: dict[str, Any] = field(default_factory=dict, repr=False)
+    camera_convention: str = ""
 
     @property
     def arms_in_pictures(self) -> dict[str, ArmReading]:
@@ -50,7 +52,7 @@ class Snapshot:
         return max(0, self.step_limit - self.step)
 
 
-def parse_obs(obs: dict[str, Any], seq: int, previous: Snapshot | None = None) -> Snapshot:
+def parse_obs(obs: dict[str, Any], seq: int, previous: Snapshot | None = None, *, depth: bool = False) -> Snapshot:
     state = obs.get("state") or {}
     arms = {}
     for arm in ARMS:
@@ -77,6 +79,8 @@ def parse_obs(obs: dict[str, Any], seq: int, previous: Snapshot | None = None) -
     if isinstance(instruction, (list, tuple)):
         instruction = instruction[0] if instruction else ""
     behind = int(info.get("pictures_behind", 0) or 0)
+    if depth:
+        images = {name: image.copy() for name, image in images.items()}
     snap = Snapshot(
         seq=seq,
         arms=arms,
@@ -86,6 +90,9 @@ def parse_obs(obs: dict[str, Any], seq: int, previous: Snapshot | None = None) -
         step_limit=_int_or_none(info.get("step_limit")),
         pictures_behind=behind,
         info=info,
+        vision={key: {f: np.array(v[f], copy=True) for f in ("depth", "intrinsic_matrix", "extrinsic_matrix") if f in v}
+                for key, v in (obs.get("vision") or {}).items() if key in CAMERA_KEYS} if depth else {},
+        camera_convention=(obs.get("additional_info") or {}).get("camera_extrinsic_convention", ""),
     )
     if behind and previous is not None:
         snap.pictured_arms = previous.arms

@@ -42,6 +42,14 @@ class PolicyHost:
         root = Path(os.environ.get("HEXASHELL_RESULT_DIR") or self.cfg.get("result_dir") or "results").expanduser()
         self.result_dir = root if root.is_absolute() else HEXASHELL_ROOT / root
         self.debug = str(os.environ.get("EVAL_ENV_TYPE") or "").lower() == "debug"
+        from ..runtime.episode import Settings
+        self.depth_backend = os.environ.get("HEXASHELL_DEPTH_BACKEND", "gt")
+        self.depth_url = os.environ.get("HEXASHELL_DEPTH_URL", "") if Settings.from_config(self.cfg).depth else ""
+        if Settings.from_config(self.cfg).depth:
+            if self.depth_backend not in ("gt", "dav2", "tradsl", "nsl"):
+                raise ValueError("unknown depth backend")
+            if (self.depth_backend != "gt") != bool(self.depth_url):
+                raise ValueError("predicted depth requires an endpoint; GT must not use one")
         self.bridge = Bridge(self.poll_s)
         self.thread: threading.Thread | None = None
         self.last_obs: dict[str, Any] = {}
@@ -75,6 +83,13 @@ class PolicyHost:
         self.last_obs = obs
         if self.debug:
             return
+        if self.depth_url:
+            from .depth_source import predict
+            try:
+                obs = predict(self.depth_url, obs, self.bridge.actions_out, backend=self.depth_backend)
+            except Exception:
+                self.bridge.abandon()
+                raise
         self.bridge.offer_obs(obs)
         if self.thread is None:
             info = dict(((obs.get("additional_info") or {}).get(STATUS_KEY)) or {})

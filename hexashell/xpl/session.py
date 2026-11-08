@@ -6,7 +6,6 @@ The robot calls are answered by :class:`hexashell.robot.host.RobotHost`; the tas
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import numpy as np
@@ -17,6 +16,13 @@ from ..runtime import card as cards
 from ..runtime.session import Attach, Session
 from ..state import CAMERAS, Snapshot, parse_obs
 from .bridge import Bridge
+from ..vision.cameras import check_cam
+
+
+def closing_yaw(direction):
+    from ..vision.rgbd import closing_yaw_robocasa
+    # RoboDojo closes along x at yaw=0; reuse the existing convention with rotated axes.
+    return closing_yaw_robocasa((-float(direction[1]), float(direction[0])))
 
 
 class RoboDojoSession(Session):
@@ -33,57 +39,37 @@ class RoboDojoSession(Session):
     # -- lifetime ------------------------------------------------------------------------------
     def open(self, settings, rec, attach: Attach) -> None:
         self.depth = bool(settings.depth)
-        if self.depth:
-            self._open_depth(settings, rec, attach)
-            return
         self.rec = rec
         seq, obs = self.bridge.latest()
         if obs is None:
             raise RuntimeError("no observation to start from")
-        first = parse_obs(obs, seq)
+        if self.depth and (obs.get("additional_info") or {}).get("camera_extrinsic_convention") != "opengl_to_world":
+            raise ValueError("RoboDojo depth requires opengl_to_world; no consumer axis conversion")
+        first = parse_obs(obs, seq, depth=self.depth)
         self._log_state(seq, obs, None)
         scene = self._scene(settings)
         self.host = RobotHost(self.bridge, first, scene=scene, log=rec.event, attach=attach,
-                              on_step=self._log_state, speed=speed_named(settings.motion))
+                              on_step=self._log_state, speed=speed_named(settings.motion), depth=self.depth)
+        if self.depth:
+            self.host.views()
         self.first = first
         self.perception = scene is not None
 
     def prompt_variant(self):
         return "rgbd" if getattr(self, "depth", False) else None
 
-    def _open_depth(self, settings, rec, attach):
-        from .depth import DepthProvider, RGBDHost, DepthScene, closing_yaw, check_cam
-        if not settings.sam3_url:
-            raise RuntimeError("RoboDojo RGBD requires SAM3; no RGB fallback")
-        self.rec = rec
-        seq, obs = self.bridge.latest()
-        if obs is None:
-            raise RuntimeError("no observation to start from")
-        self.depth_provider = DepthProvider(os.environ.get("HEXASHELL_DEPTH_BACKEND", "gt"),
-                                            os.environ.get("HEXASHELL_DEPTH_URL"), log=rec.event)
-        parse_depth = self.depth_provider.parse
-        first = parse_depth(obs, seq)
-        self._log_state(seq, obs, None)
-        scene = DepthScene(settings.sam3_url, cams=list(CAMERAS), check_cam=check_cam,
-                           closing_yaw=closing_yaw, log=rec.event)
-        try:
-            self.host = RGBDHost(self.bridge, first, scene=scene, log=rec.event, attach=attach,
-                                on_step=self._log_state, speed=speed_named(settings.motion), parser=parse_depth)
-            self.host.views()
-            self.first = first
-            self.perception = True
-            rec.event({"kind": "rgbd_active", "source": "vision.depth", "camera_convention": "opengl_to_world"})
-        except BaseException:
-            scene.close()
-            raise
-
     def close(self):
-        if getattr(self, "depth", False) and self.host is not None:
-            scene, self.host.scene = self.host.scene, None
-            if scene is not None:
-                scene.close()
+        if self.host is not None and self.host.scene is not None:
+            self.host.scene.close()
+            self.host.scene = None
 
     def _scene(self, settings):
+        if self.depth:
+            from ..vision.rgbd import DepthScene
+            if not settings.sam3_url:
+                raise RuntimeError("depth measurement requires SAM3")
+            return DepthScene(settings.sam3_url, cams=list(CAMERAS), check_cam=check_cam,
+                              closing_yaw=closing_yaw, log=self.rec.event)
         if not settings.sam3_url:
             return None
         try:
@@ -117,7 +103,13 @@ class RoboDojoSession(Session):
         return self.host.dispatch(name, args, kwargs)
 
     def card(self, settings) -> tuple[str, dict]:
-        return cards.task_card(self.first, with_ladder=settings.ladder, with_skill=settings.skills)
+        text, facts = cards.task_card(self.first, with_ladder=settings.ladder, with_skill=settings.skills)
+        if self.depth:
+            import os
+            source = os.environ.get("HEXASHELL_DEPTH_BACKEND", "gt")
+            text += f"\nDepth source: {source}; aligned optical-axis metres. Predicted depth can be inaccurate; no GT fallback.\n"
+            facts["depth_source"] = source
+        return text, facts
 
     def start_pictures(self) -> list[tuple[str, np.ndarray]]:
         return [(cam, self.first.images[cam]) for cam in CAMERAS if cam in self.first.images]

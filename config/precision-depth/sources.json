@@ -1,0 +1,25 @@
+{
+  "sources": {
+    "Depth-Anything-V2": {
+      "url": "https://github.com/DepthAnything/Depth-Anything-V2.git",
+      "commit": "a561b849ebae10a6f5ef49e26c83cbbcd36c71bf"
+    },
+    "TradSL": {
+      "url": "https://github.com/Namisntimpot/TradSL.git",
+      "commit": "be4b4d1640458096318d7890a0e434876ebeeae4"
+    },
+    "nsl_infer_server": {
+      "url": "https://github.com/Namisntimpot/nsl_infer_server.git",
+      "commit": "5ed56924ca52122d0b13e9cfbe346531b8c61add"
+    }
+  },
+  "nsl_weights_sha256": "a2109e05290bf627608e71786c250bd81df6c255e625d17ddba346e9dd570ca9",
+  "nsl_config_sha256": "cf0632ed32e912d65413b841dfaf3cb5ea03ce014f1a6fc75447e3542d539b4a",
+  "licenses": "DAv2 root Apache-2.0; model terms separate. TradSL and NSL lack top-level license: inspect permissions before redistribution.",
+  "dav2_weights_sha256": "6f82ff2bc543ac02ddff4aa31fa363676a8305dd3ccf04e80e2af115a044cb6d",
+  "native_sensor_inputs": {
+    "env_cfg/camera/camera_config.yml": "c1752170da855e735beba27fddbf78dad16f2395e4ef8b24e9827a768e616a62",
+    "env_cfg/robot/dual_x5.yml": "46d400b8e6fed509e62c069c31f19cc3cf29b71d22c6cc583893e35e4818b262",
+    "Assets/Robots/x5/robot_config.yml": "9de4f63b84c0f730623c09af7a2d530d84973981397280b6e4b626b50ba6f1c9"
+  }
+}

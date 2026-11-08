@@ -20,7 +20,7 @@ import numpy as np
 
 from ..errors import Refused
 from ..robot.results import CameraInfo
-from ..state import CAMERAS, Snapshot
+from ..state import CAMERA_KEYS, CAMERAS, Snapshot
 
 WIDTH, HEIGHT = 640, 480
 HEAD_FOCAL = 288.1325
@@ -151,8 +151,24 @@ def wrist_pose(flange: np.ndarray) -> np.ndarray:
     return np.asarray(flange, float) @ WRIST_MOUNT
 
 
-def cameras_for(snap: Snapshot) -> dict[str, Camera]:
+def cameras_for(snap: Snapshot, *, observed: bool = False) -> dict[str, Camera]:
     """The cameras as they were when the snapshot's pictures were taken."""
+    if observed:
+        if snap.camera_convention != "opengl_to_world":
+            raise ValueError("observed camera must use opengl_to_world")
+        cams = {}
+        for key, name in CAMERA_KEYS.items():
+            v = snap.vision[key]
+            k, pose = np.asarray(v["intrinsic_matrix"], float), np.asarray(v["extrinsic_matrix"], float)
+            if k.shape != (3, 3) or pose.shape != (4, 4) or not np.isfinite(k).all() or not np.isfinite(pose).all():
+                raise ValueError(f"invalid observation calibration: {name}")
+            if min(k[0, 0], k[1, 1]) <= 0 or not np.allclose(pose[3], [0, 0, 0, 1]) or not np.allclose(pose[:3,:3].T @ pose[:3,:3], np.eye(3), atol=1e-4) or not np.isclose(np.linalg.det(pose[:3,:3]), 1, atol=1e-4):
+                raise ValueError(f"invalid observation camera pose/intrinsics: {name}")
+            if not np.allclose(k[2], [0,0,1]) or not np.isclose(k[0,1],0) or not np.isclose(k[1,0],0):
+                raise ValueError("unsupported skew/projective camera intrinsics")
+            h, w = snap.images[name].shape[:2]
+            cams[name] = Camera(name, float(k[0, 0]), pose.copy(), w, h, k=k.copy())
+        return cams
     arms = snap.arms_in_pictures
     cams = {"head": Camera("head", HEAD_FOCAL, HEAD_POSE.copy())}
     for arm in ("left", "right"):

@@ -1,6 +1,6 @@
 # Third-party versions
 
-The versions our tests ran with. Nothing listed here is part of this repository except the two submodules (pinned
+The versions our tests ran with. Nothing listed here is part of this repository except the pinned submodules (pinned
 commits, not copies) and the changes to RoboCasa described below.
 
 ## RoboDojo
@@ -77,7 +77,7 @@ RoboTwin 2.0 itself: [RoboTwin-Platform/RoboTwin](https://github.com/RoboTwin-Pl
 | Environment | torch 2.7.0, torchvision 0.22.0 (CUDA), timm |
 
 
-## Depth backends (pinned independent Git submodules)
+## Depth backends
 
 Initialize with `git submodule update --init --recursive`. No model weights or environments
 are added by these submodule references. Original sibling Depth checkouts are untouched.

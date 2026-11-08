@@ -1,0 +1,82 @@
+annotator:
+  common:
+    enabled: true
+    rgb_capture:
+      type: rgb
+      device: cpu
+cam_head:
+  camera:
+    type: Gemini_345Lg
+    mesh: pinhole
+    pos:
+    - 0.0
+    - -0.41
+    - 1.308
+    ori:
+    - 30.0
+    - 0
+    - 0
+cam_left_wrist:
+  camera:
+    pos:
+    - 0
+    - 0
+    - 0.001
+    ori:
+    - 0
+    - -80
+    - -90
+    type: d435
+    mesh: pinhole
+    mount_link: robot0/camera
+cam_right_wrist:
+  camera:
+    pos:
+    - 0
+    - 0
+    - 0.001
+    ori:
+    - 0
+    - -80
+    - -90
+    type: d435
+    mesh: pinhole
+    mount_link: robot1/camera
+cam_head_stereo_right:
+  camera:
+    type: Gemini_345Lg
+    mesh: pinhole
+    pos:
+    - 0.05
+    - -0.41
+    - 1.308
+    ori:
+    - 30.0
+    - 0
+    - 0
+cam_left_wrist_stereo_right:
+  camera:
+    pos:
+    - 5.316442123939431e-19
+    - -0.05
+    - 0.001000000000000003
+    ori:
+    - 0
+    - -80
+    - -90
+    type: d435
+    mesh: pinhole
+    mount_link: robot0/camera
+cam_right_wrist_stereo_right:
+  camera:
+    pos:
+    - 5.316442123939431e-19
+    - -0.05
+    - 0.001000000000000003
+    ori:
+    - 0
+    - -80
+    - -90
+    type: d435
+    mesh: pinhole
+    mount_link: robot1/camera
