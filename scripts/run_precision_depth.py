@@ -139,6 +139,12 @@ def camera_variant(camera, lane):
 def build_plan(args, output):
     root = args.root.resolve()
     tasks = tasks_from_inventory(root)
+    selected = getattr(args, "tasks", None)
+    if selected:
+        requested = selected.split(",")
+        if len(set(requested)) != len(requested) or any(t not in tasks for t in requested):
+            raise ValueError("--tasks must contain unique canonical precision task names")
+        tasks = [t for t in tasks if t in requested]
     native = root / "RoboDojo"
     records = []
     lanes = []
@@ -153,7 +159,7 @@ def build_plan(args, output):
             invocation = {
                 "lane": lane, "gpu": gpu, "task": task,
                 "run_id": f"{output.name}-{lane}-{task}",
-                "config_name": f"precision_{output.name}_{lane}",
+                "config_name": yaml_load(native / "env_cfg/arx_x5.yml")["config_name"],
                 "log": str(task_dir / "eval.log"), "result_dir": str(task_dir / "policy"),
                 "argv": ["bash", str(native / "scripts/robodojo.sh"), "eval",
                          "--policy-dir", str(native / "XPolicyLab/policy/HexaShell"),
@@ -204,6 +210,14 @@ def sourced_environment(root):
                              "precision-env", str(root / "HexaShell/config/env.sh")],
                             check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     env = dict(item.split("=", 1) for item in result.stdout.decode().split("\0") if "=" in item)
+    conda_exe = Path(env.get("CONDA_EXE", ""))
+    if not conda_exe.is_file():
+        candidate = Path(sys.executable).resolve().parents[3] / "bin/conda"
+        if not candidate.is_file():
+            raise ValueError("Conda executable missing; activate policy environment or set CONDA_EXE")
+        conda_exe = candidate
+    env["PATH"] = str(conda_exe.parent) + os.pathsep + env.get("PATH", "")
+    env["CONDA_EXE"] = str(conda_exe)
     env.pop("PYTHONPATH", None)
     env.pop("PYTHONSTARTUP", None)
     for key in ("HEXASHELL_RGBD_ADAPTER","EXACT_ROBODOJO_LAYOUT","DEPTH_BACKEND","DEPTH_PREDICTOR_URL","HEXASHELL_ARCHIVE_DIR","HEXASHELL_DEPTH_RECORD_DIR"):
@@ -435,13 +449,13 @@ def execute(plan):
             done = [r for r in records if r["lane"] == lane and r["status"] == "completed"]
             count = sum(r["episodes"] for r in done)
             summary["lanes"][lane] = {
-                "completed_tasks": len(done), "expected_tasks": 8, "episodes": count,
+                "completed_tasks": len(done), "expected_tasks": len(plan["tasks"]), "episodes": count,
                 "success_rate_percent": sum(r["success_rate_percent"] * r["episodes"] for r in done) / count if count else None,
                 "official_score_percent": sum(r["official_score_percent"] * r["episodes"] for r in done) / count if count else None,
-                "partial": len(done) != 8,
+                "partial": len(done) != len(plan["tasks"]),
             }
         (Path(plan["output"]) / "summary.json").write_text(json.dumps(summary, indent=2))
-    return 0 if len(records) == 40 and all(r["status"] == "completed" for r in records) else 1
+    return 0 if len(records) == len(plan["invocations"]) and all(r["status"] == "completed" for r in records) else 1
 
 
 def main(argv=None):
@@ -452,6 +466,7 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--eval-num", type=positive, default=1)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--tasks", help="optional comma-separated precision subset for acceptance; default all eight")
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args(argv)
     if args.seed < 0:
@@ -464,7 +479,7 @@ def main(argv=None):
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         plan["camera_preflight"] = f"FAILED: {exc}"
     (output / "plan.json").write_text(json.dumps(plan, indent=2))
-    print(f"{'Execute' if args.execute else 'Dry-run'} plan: {output / 'plan.json'} (40 invocations)")
+    print(f"{'Execute' if args.execute else 'Dry-run'} plan: {output / 'plan.json'} ({len(plan['invocations'])} invocations)")
     print(f"Camera preflight: {plan['camera_preflight']}")
     if not args.execute:
         return 0

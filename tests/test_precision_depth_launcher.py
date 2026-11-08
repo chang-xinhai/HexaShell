@@ -67,6 +67,14 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(plan["lanes"][0]["invocations"][0]["env"]["HEXASHELL_DEPTH"], "0")
         self.assertEqual(plan["lanes"][4]["invocations"][0]["env"]["HEXASHELL_DEPTH_BACKEND"], "nsl")
 
+    def test_acceptance_subset_preserves_native_layout_namespace(self):
+        args = argparse.Namespace(root=self.root, data_root=self.root / "data", gpus=["0","1","2","3","4"], seed=1, eval_num=1, execute=False, tasks="insert_tubes")
+        plan = launcher.build_plan(args, self.root / "output/acceptance")
+        self.assertEqual(len(plan["invocations"]), 5)
+        self.assertEqual(plan["tasks"], ["insert_tubes"])
+        native = yaml.safe_load((self.robo / "env_cfg/arx_x5.yml").read_text())["config_name"]
+        self.assertTrue(all(item["config_name"] == native for item in plan["invocations"]))
+
     def test_actual_native_wrist_resolution_and_stereo_geometry(self):
         plan = self.plan()
         launcher.materialize(plan)
